@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 // Values come from .env (see .env.example). They are public web config, not secrets:
 // all privacy is enforced by firestore.rules and storage.rules.
@@ -19,4 +18,3 @@ export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfi
 export const app = initializeApp(firebaseConfigured ? firebaseConfig : { apiKey: 'missing', projectId: 'missing', appId: 'missing' });
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);

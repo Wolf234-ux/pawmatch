@@ -1,13 +1,15 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
 import { firebaseConfigured } from './firebase';
-import Welcome from './pages/Welcome';
-import Setup from './pages/Setup';
-import Discover from './pages/Discover';
-import DogProfile from './pages/DogProfile';
-import Chats from './pages/Chats';
-import ChatRoom from './pages/ChatRoom';
-import Me from './pages/Me';
+// Each screen is a separate small file, downloaded only when first opened.
+const Welcome = lazy(() => import('./pages/Welcome'));
+const Setup = lazy(() => import('./pages/Setup'));
+const Discover = lazy(() => import('./pages/Discover'));
+const DogProfile = lazy(() => import('./pages/DogProfile'));
+const Chats = lazy(() => import('./pages/Chats'));
+const ChatRoom = lazy(() => import('./pages/ChatRoom'));
+const Me = lazy(() => import('./pages/Me'));
 import { Paw } from './components/Icons';
 
 export default function App() {
@@ -31,6 +33,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Suspense fallback={<div className="center"><Paw size={40} color="#c94f27" /></div>}>
       <Routes>
         {!user && <Route path="*" element={<Welcome />} />}
         {user && !ready && <Route path="*" element={<Setup />} />}
@@ -45,6 +48,7 @@ export default function App() {
           </>
         )}
       </Routes>
+      </Suspense>
     </div>
   );
 }

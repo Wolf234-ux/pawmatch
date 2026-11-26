@@ -68,12 +68,8 @@ jobs:
         run: |
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
-          # PawMatch icon instead of the default Capacitor icon
-          rm -rf android/app/src/main/res/mipmap-anydpi-v26
-          cp -r resources/android/* android/app/src/main/res/
-          # Version shown on the phone (1.V.0) and used for updates
-          sed -i "s/versionCode [0-9]*/versionCode $((V + 100))/; s/versionName \"[^\"]*\"/versionName \"1.$V.0\"/" android/app/build.gradle
-          grep -E "versionCode|versionName" android/app/build.gradle
+          # PawMatch icon + small splash, version 1.V.0, small release build (see tool/fix_android.sh)
+          bash tool/fix_android.sh
 
       # Same signing key for every version, so a new version installs over the old one.
       - name: Signing key
@@ -85,15 +81,18 @@ jobs:
             echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
             echo "Using fixed PawMatch signing key"
           else
+            keytool -genkey -v -keystore ~/.android/debug.keystore -alias androiddebugkey \
+              -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
             echo "::warning::PAWMATCH_KEYSTORE secret not set - this APK cannot update older versions"
           fi
 
-      - name: Build APK
+      - name: Build small APK (release, shrunk)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../PawMatch-v$V.apk
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../PawMatch-v$V.apk
           ls -lh ../PawMatch-v$V.apk
 
       - uses: actions/upload-artifact@v4

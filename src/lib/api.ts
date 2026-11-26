@@ -1,8 +1,7 @@
 import {
   collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { app, db } from '../firebase';
 import type { Chat, Dog, PrivateDetails, Swipe } from '../types';
 import { pairId } from './util';
 
@@ -32,7 +31,9 @@ export async function saveDog(uid: string, dog: Omit<Dog, 'updatedAt'>) {
 }
 
 export async function uploadDogPhoto(uid: string, file: File): Promise<string> {
-  const r = ref(storage, `dogs/${uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
+  // Loaded only when a photo is uploaded, to keep the app small.
+  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+  const r = ref(getStorage(app), `dogs/${uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`);
   await uploadBytes(r, file, { contentType: file.type });
   return getDownloadURL(r);
 }
