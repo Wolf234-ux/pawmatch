@@ -8,6 +8,8 @@ import { HEALTH_TAGS, TEMPERAMENTS, type Gender, type Size } from '../types';
 import { Lock } from './Icons';
 import DogPhoto from './DogPhoto';
 
+const USERNAME_MSG_KEY = 'pawmatch_username_msg'; // same key as in Welcome.tsx
+
 export default function ProfileForm({ submitLabel, onSaved }: { submitLabel: string; onSaved?: () => void }) {
   const { user, profile, dog } = useAuth();
   const uid = user!.uid;
@@ -35,6 +37,19 @@ export default function ProfileForm({ submitLabel, onSaved }: { submitLabel: str
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [locMsg, setLocMsg] = useState('');
+  // A username problem from the sign-up screen (e.g. the name was already taken).
+  const [usernameMsg, setUsernameMsg] = useState(() => sessionStorage.getItem(USERNAME_MSG_KEY) ?? '');
+
+  useEffect(() => {
+    const pick = () => setUsernameMsg(sessionStorage.getItem(USERNAME_MSG_KEY) ?? '');
+    window.addEventListener(USERNAME_MSG_KEY, pick);
+    pick();
+    return () => window.removeEventListener(USERNAME_MSG_KEY, pick);
+  }, []);
+
+  useEffect(() => {
+    if (profile) { sessionStorage.removeItem(USERNAME_MSG_KEY); setUsernameMsg(''); }
+  }, [profile]);
 
   useEffect(() => {
     getPrivate(uid).then((p) => {
@@ -131,6 +146,7 @@ export default function ProfileForm({ submitLabel, onSaved }: { submitLabel: str
       {!profile && (
         <div className="field">
           <label htmlFor="un">Choose a username (public)</label>
+          {usernameMsg && <div className="notice notice-err" role="alert">{usernameMsg}</div>}
           <input id="un" className="input" placeholder="bruno_dad" value={username} onChange={(e) => setUsername(e.target.value)} required />
         </div>
       )}
@@ -155,7 +171,7 @@ export default function ProfileForm({ submitLabel, onSaved }: { submitLabel: str
         </div>
       </div>
       <div className="row">
-        <div className="field"><label htmlFor="dn">Name</label><input id="dn" className="input" value={name} onChange={(e) => setName(e.target.value)} required /></div>
+        <div className="field"><label htmlFor="dn">Name</label><input id="dn" className="input" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} required /></div>
         <div className="field"><label htmlFor="db">Breed</label><input id="db" className="input" placeholder="Labrador" value={breed} onChange={(e) => setBreed(e.target.value)} required /></div>
       </div>
       <div className="row">
