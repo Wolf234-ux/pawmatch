@@ -4,6 +4,9 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { Lock, Paw } from '../components/Icons';
 import { errMsg, USERNAME_RE } from '../lib/util';
+
+/** Shared with ProfileForm: carries a username problem over to the "Add your dog" screen. */
+const USERNAME_MSG_KEY = 'pawmatch_username_msg';
 import { claimUsername } from '../lib/api';
 
 export default function Welcome() {
@@ -26,9 +29,17 @@ export default function Welcome() {
       const u = username.trim().toLowerCase().replace(/^@/, '');
       if (!USERNAME_RE.test(u)) throw new Error('Username: 3–20 characters, only a–z, 0–9, _ and . (no real names).');
       const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const taken = await getDoc(doc(db, 'usernames', u));
-      if (taken.exists()) throw new Error('That username is taken. Pick another on the next screen.');
-      await claimUsername(cred.user.uid, u);
+      // From here the app has already moved to the "Add your dog" screen, so any problem
+      // with the username is handed over to that screen to show.
+      try {
+        const taken = await getDoc(doc(db, 'usernames', u));
+        if (taken.exists()) throw new Error(`@${u} is already taken. Please choose another username.`);
+        await claimUsername(cred.user.uid, u);
+      } catch (err) {
+        sessionStorage.setItem(USERNAME_MSG_KEY, errMsg(err) === 'Not allowed.' ? `@${u} is already taken. Please choose another username.` : errMsg(err));
+        window.dispatchEvent(new Event(USERNAME_MSG_KEY));
+        throw err;
+      }
     } catch (err) {
       setError(errMsg(err));
     } finally {
