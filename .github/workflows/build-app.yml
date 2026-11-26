@@ -1,0 +1,129 @@
+name: Build Android APK + iPhone web app
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to publish each version as a GitHub Release
+  pages: write      # to publish the web app (iPhone version)
+  id-token: write   # required by the GitHub Pages deploy
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Firebase web config (public values, not secrets).
+      # Set in: Repo Settings -> Secrets and variables -> Actions -> Variables
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'   # Capacitor 8 needs Java 21
+
+      - run: npm ci
+
+      - name: Check Firebase config
+        run: |
+          if [ -z "$VITE_FIREBASE_API_KEY" ]; then
+            echo "::warning::Firebase variables are not set - the app will show 'Firebase not configured' until they are added"
+          fi
+
+      - name: Version number (Version 1, 2, 3 ...)
+        run: echo "V=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Build web app (iPhone / browser version)
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          npm run build
+          cp dist/index.html dist/404.html
+          mv dist web-dist
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-dist
+
+      - name: Build app files for Android
+        run: npm run build   # base path "/" inside the APK
+
+      - name: Create Android folder
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+          # PawMatch icon instead of the default Capacitor icon
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          cp -r resources/android/* android/app/src/main/res/
+          # Version shown on the phone (1.V.0) and used for updates
+          sed -i "s/versionCode [0-9]*/versionCode $((V + 100))/; s/versionName \"[^\"]*\"/versionName \"1.$V.0\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+
+      # Same signing key for every version, so a new version installs over the old one.
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.PAWMATCH_KEYSTORE }}
+        run: |
+          mkdir -p ~/.android
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+            echo "Using fixed PawMatch signing key"
+          else
+            echo "::warning::PAWMATCH_KEYSTORE secret not set - this APK cannot update older versions"
+          fi
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../PawMatch-v$V.apk
+          ls -lh ../PawMatch-v$V.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PawMatch-v${{ env.V }}
+          path: PawMatch-v${{ env.V }}.apk
+          compression-level: 0
+
+      - name: Publish as GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.V }}
+          name: PawMatch Version ${{ env.V }}
+          body: |
+            **Android:** download `PawMatch-v${{ env.V }}.apk` below and open it on the phone (allow "Install unknown apps" once).
+
+            **iPhone:** open https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ in Safari -> Share -> Add to Home Screen.
+
+            Changes: ${{ github.event.head_commit.message }}
+          files: PawMatch-v${{ env.V }}.apk
+
+  # Publishes the iPhone / browser version to GitHub Pages
+  deploy-web:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

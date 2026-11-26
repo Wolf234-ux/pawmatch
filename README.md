@@ -56,6 +56,19 @@ Login email and password live in Firebase Auth. They are never stored in Firesto
    ```
    This gives you a link like `https://pawmatch-xxxx.web.app` that anyone can open on their phone.
 
+## Automatic builds (GitHub Actions)
+
+Every push runs `.github/workflows/build-app.yml`, which:
+- builds the **Android APK** (`PawMatch-vN.apk`)
+- publishes it under **Releases → PawMatch Version N**
+- publishes the **iPhone/browser web app** to https://wolf234-ux.github.io/pawmatch/
+
+One-time setup:
+1. **Turn on Pages.** Go to Repo Settings → Pages → Source and choose **GitHub Actions**.
+2. **Add the Firebase config.** Go to Repo Settings → Secrets and variables → Actions → **Variables** and add the six `VITE_FIREBASE_*` values.
+3. **Add a signing key (optional).** Add a secret named `PAWMATCH_KEYSTORE` containing a base64-encoded keystore, so new APKs install over old ones.
+4. **Allow the app's web address to sign in.** In Firebase, go to Authentication → Settings → Authorized domains and add `wolf234-ux.github.io`.
+
 ## Testing the privacy rules
 
 ```bash
