@@ -19,8 +19,11 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<(Message & { id: string })[]>([]);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
-  const [theirs, setTheirs] = useState<PrivateDetails | null>(null);
+  // undefined = still loading, null = not provided
+  const [theirs, setTheirs] = useState<PrivateDetails | null | undefined>(undefined);
   const [mine, setMine] = useState<PrivateDetails | null>(null);
+  // false while our own consent change is still on its way to the server
+  const [synced, setSynced] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
   const other = chat ? otherMember(chat.members, me) : null;
@@ -31,7 +34,10 @@ export default function ChatRoom() {
 
   useEffect(() => {
     if (!chatId) return;
-    return onSnapshot(doc(db, 'chats', chatId), (s) => setChat(s.exists() ? (s.data() as Chat) : null), () => setChat(null));
+    return onSnapshot(doc(db, 'chats', chatId), { includeMetadataChanges: true }, (s) => {
+      setChat(s.exists() ? (s.data() as Chat) : null);
+      setSynced(!s.metadata.hasPendingWrites);
+    }, () => setChat(null));
   }, [chatId]);
 
   useEffect(() => {
@@ -46,11 +52,25 @@ export default function ChatRoom() {
   }, [chatId, chatReady]);
 
   // Contact details are fetched ONLY when both consented — and the security rules enforce the same.
+  // Wait until the server has confirmed the consent (synced): the rules check the consent
+  // saved on the server, not the one shown on this phone. Retry in case it is still catching up.
   useEffect(() => {
-    if (!shared || !other) { setTheirs(null); return; }
-    getPrivate(other).then(setTheirs).catch(() => setTheirs(null));
-    getPrivate(me).then(setMine).catch(() => {});
-  }, [shared, other, me]);
+    if (!shared || !other) { setTheirs(undefined); return; }
+    if (!synced) return;
+    let cancelled = false;
+    const load = (triesLeft: number) => {
+      getPrivate(other)
+        .then((p) => { if (!cancelled) setTheirs(p); })
+        .catch(() => {
+          if (cancelled) return;
+          if (triesLeft > 0) setTimeout(() => load(triesLeft - 1), 1500);
+          else setTheirs(null);
+        });
+    };
+    load(4);
+    getPrivate(me).then((p) => { if (!cancelled) setMine(p); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [shared, synced, other, me]);
 
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }); }, [messages.length, shared, theyConsent]);
 
@@ -121,7 +141,7 @@ export default function ChatRoom() {
             <div className="contact-grid">
               <div className="contact-box">
                 <div className="muted" style={{ fontSize: 12 }}>{dog?.name ?? 'Their dog'}'s owner</div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{theirs?.realName || 'Not provided'}</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{theirs === undefined ? 'Loading…' : theirs?.realName || 'Not provided'}</div>
                 {theirs?.phone && <a href={`tel:${theirs.phone}`}>{theirs.phone}</a>}
                 {theirs?.address && <div>{theirs.address}</div>}
               </div>
